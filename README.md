@@ -1,2 +1,2 @@
 # DistributedDataBase
-Distributed data base from baum hackathon  
+Distributed data base by parity code algorithm.  
