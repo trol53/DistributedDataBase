@@ -16,16 +16,20 @@ public:
     std::pair<int, std::vector<std::string>> GetFile(std::string& hash){
         std::vector<std::string> data;
         int error_check = -1;
-        for (int i = 0; i < disk_numbers; i++){
-            data.push_back(GetBlock(i, hash));
-            std::cout << "recieve block from db: " << data[i] << '\n';
-            if (data[i] == "Error"){
-                error_check = i;
-                data.pop_back();
+        try{
+            for (int i = 0; i < disk_numbers; i++){
+                data.push_back(GetBlock(i, hash));
+                std::cout << "recieve block from db: " << data.back() << '\n';
+                if (data.back() == "Error"){
+                    error_check = i;
+                    data.pop_back();
+                }
             }
-        }
-        if (error_check != -1){
-            data.push_back(GetBlock(2, hash));
+            if (error_check != -1){
+                data.push_back(GetBlock(2, hash));
+            }
+        } catch (std::exception& e){
+            std::cout << e.what() << '\n';
         }
         return std::make_pair(error_check, data);
         
