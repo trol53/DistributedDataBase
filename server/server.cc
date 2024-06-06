@@ -55,7 +55,13 @@ public:
         file = pc.get_file_by_blocks(file_blocks.second);
         std::cout << "file blocks size: " << file_blocks.second[0].size() << " " << file_blocks.second[1].size() << std::endl; 
       } else {
-        file = pc.get_file_by_parity(file_blocks.second[0], file_blocks.second[1], file_blocks.first);
+        std::string parity = file_blocks.second.back();
+        file_blocks.second.pop_back();
+        try{
+          file = pc.get_file_by_parity(file_blocks.second, parity, file_blocks.first);
+        } catch(std::exception& e){
+          std::cout << "get file error: " << e.what() << std::endl;
+        }
       }
       socket_.write_some(boost::asio::buffer(db.str_to_vec(file)));
       // std::cout << "get" << mess[1];
@@ -97,6 +103,7 @@ public:
   DbInterface db;
   std::string data_;
   boost::asio::streambuf buffer_;
+  int num_of_nodes = 2;
 };
 
 class server

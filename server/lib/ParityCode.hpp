@@ -19,24 +19,22 @@ public:
             set_blocks();
         } 
 
-    std::string get_file_by_blocks(std::vector<std::string>& blocks){
+    std::string get_file_by_blocks(const std::vector<std::string>& blocks){
         std::string file;
-        for (auto s : blocks){
-            file.append(s);
+        for (const std::string& block : blocks){
+            file.append(block);
         }
         return file;
     }
 
-    std::string get_file_by_parity(std::string& s1, std::string& parity, int block){
-        std::string file;
-        if (block == 0){
-            file = get_parity(s1, parity) + s1;
-        } else {
-            file = s1 + get_parity(s1, parity);
-        }
-        return file;
-
+    std::string get_file_by_parity(std::vector<std::string>& blocks, std::string& parity, int broken_block){
+        std::string last_parity = get_parity(blocks);
+        std::string fix_block = get_parity(last_parity, parity);
+        auto iter = blocks.begin() + broken_block;
+        blocks.insert(iter, fix_block);
+        return get_file_by_blocks(blocks);
     }
+
     
     std::vector<std::string> get_blocks(){
         return blocks_;
@@ -60,14 +58,18 @@ public:
     }
 
     std::string get_parity(){
-        return get_parity(blocks_[0], blocks_[1]);
+        return get_parity(blocks_);
     }
 
     void set_blocks(){
-        blocks_.push_back(std::string(
-            file_content_.begin(), file_content_.begin() + file_content_.size() / num_of_blocks_));
-        blocks_.push_back(std::string(
-            file_content_.begin() + file_content_.size() / num_of_blocks_, file_content_.end()));
+        int step = file_content_.size() / num_of_blocks_;
+        for (int i = 1; i <= num_of_blocks_; i++){
+            if (i == num_of_blocks_){
+                blocks_.push_back(std::string(file_content_.begin() + step * (i - 1), file_content_.end()));
+                break;
+            }
+            blocks_.push_back(std::string(file_content_.begin() + step * (i - 1), file_content_.begin() + step * i));
+        }
     }
 
     std::string get_parity(std::string& s1, std::string& s2){
@@ -79,6 +81,15 @@ public:
             parity.push_back(s1[i] ^ s2[i]);
         }
         parity.append(s2.begin() + len, s2.end());
+        return parity;
+    }
+
+    std::string get_parity(std::vector<std::string>& blocks){
+        std::string parity;
+        parity = blocks[0];
+        for (int i = 1; i < blocks.size(); i++){
+            parity = get_parity(parity, blocks[i]); 
+        }
         return parity;
     }
 
