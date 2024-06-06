@@ -45,7 +45,7 @@ public:
   {
     // auto self(shared_from_this());
     std::vector<std::string> mess = split(data_);
-
+    DbInterface db(num_of_nodes);
     if (mess[0] == "get"){
       ParityCode pc(mess[1]);
       std::string hash = pc.get_hash();
@@ -100,7 +100,6 @@ public:
 
 
   tcp::socket socket_;
-  DbInterface db;
   std::string data_;
   boost::asio::streambuf buffer_;
   int num_of_nodes = 2;

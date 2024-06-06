@@ -12,12 +12,13 @@ class DbInterface{
 public:
 
     DbInterface() = default;
+    DbInterface(int num_of_nodes) : num_of_nodes_(num_of_nodes){};
 
     std::pair<int, std::vector<std::string>> GetFile(std::string& hash){
         std::vector<std::string> data;
         int error_check = -1;
         try{
-            for (int i = 0; i < disk_numbers; i++){
+            for (int i = 0; i < num_of_nodes_; i++){
                 data.push_back(GetBlock(i, hash));
                 std::cout << "recieve block from db: " << data.back() << '\n';
                 if (data.back() == "Error"){
@@ -40,7 +41,7 @@ public:
             boost::asio::io_service io_service;
 
             tcp::resolver resolver(io_service);
-            tcp::resolver::query query(tcp::v4(), ip[num], ports[num]);
+            tcp::resolver::query query(tcp::v4(), ip_[num], ports_[num]);
             tcp::resolver::iterator iterator = resolver.resolve(query);
 
             tcp::socket socket(io_service);
@@ -75,7 +76,7 @@ public:
     }
 
     void SetFile(const std::string& hash, std::vector<std::string>& data){
-        for (int i = 0; i <= disk_numbers; i++){
+        for (int i = 0; i <= num_of_nodes_; i++){
             SetBlock(hash, data[i], i);
         }
     }
@@ -86,7 +87,7 @@ public:
             boost::asio::io_service io_service; 
 
             tcp::resolver resolver(io_service);
-            tcp::resolver::query query(tcp::v4(), ip[index], ports[index]);
+            tcp::resolver::query query(tcp::v4(), ip_[index], ports_[index]);
             tcp::resolver::iterator iterator = resolver.resolve(query);
 
             tcp::socket socket(io_service);
@@ -103,9 +104,9 @@ public:
         }
     }
 
-    std::vector<std::string> ip = {"127.0.0.1", "127.0.0.1", "127.0.0.1"};
-    std::vector<std::string> ports = {"8081", "8082", "8083"};
-    size_t disk_numbers = 2;
+    std::vector<std::string> ip_ = {"127.0.0.1", "127.0.0.1", "127.0.0.1"};
+    std::vector<std::string> ports_ = {"8081", "8082", "8083"};
+    size_t num_of_nodes_ = 2;
 };
 
 #endif
