@@ -1,0 +1,13 @@
+num_of_nodes = 3
+
+[node1]
+address = "127.0.0.1"
+port = "9081"
+
+[node2]
+address = "127.0.0.1"
+port = "9082"
+
+[node3]
+address = "127.0.0.1"
+port = "9083"

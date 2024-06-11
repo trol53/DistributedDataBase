@@ -12,13 +12,15 @@ class DbInterface{
 public:
 
     DbInterface() = default;
-    DbInterface(int num_of_nodes) : num_of_nodes_(num_of_nodes){};
+    DbInterface(std::vector<std::pair<std::string, std::string>>& nodes_params) : nodes_params_(nodes_params){
+        num_of_nodes_ = nodes_params_.size();
+    };
 
     std::pair<int, std::vector<std::string>> GetFile(std::string& hash){
         std::vector<std::string> data;
         int error_check = -1;
         try{
-            for (int i = 0; i < num_of_nodes_; i++){
+            for (int i = 0; i < num_of_nodes_ - 1; i++){
                 data.push_back(GetBlock(i, hash));
                 std::cout << "recieve block from db: " << data.back() << '\n';
                 if (data.back() == "Error"){
@@ -36,12 +38,12 @@ public:
         
     }
 
-    std::string GetBlock(int num, std::string hash){
+    std::string GetBlock(int num, std::string& hash){
         try {
             boost::asio::io_service io_service;
 
             tcp::resolver resolver(io_service);
-            tcp::resolver::query query(tcp::v4(), ip_[num], ports_[num]);
+            tcp::resolver::query query(tcp::v4(), nodes_params_[num].first, nodes_params_[num].second);
             tcp::resolver::iterator iterator = resolver.resolve(query);
 
             tcp::socket socket(io_service);
@@ -76,7 +78,7 @@ public:
     }
 
     void SetFile(const std::string& hash, std::vector<std::string>& data){
-        for (int i = 0; i <= num_of_nodes_; i++){
+        for (int i = 0; i < num_of_nodes_; i++){
             SetBlock(hash, data[i], i);
         }
     }
@@ -87,7 +89,7 @@ public:
             boost::asio::io_service io_service; 
 
             tcp::resolver resolver(io_service);
-            tcp::resolver::query query(tcp::v4(), ip_[index], ports_[index]);
+            tcp::resolver::query query(tcp::v4(), nodes_params_[index].first, nodes_params_[index].second);
             tcp::resolver::iterator iterator = resolver.resolve(query);
 
             tcp::socket socket(io_service);
@@ -104,8 +106,7 @@ public:
         }
     }
 
-    std::vector<std::string> ip_ = {"127.0.0.1", "127.0.0.1", "127.0.0.1"};
-    std::vector<std::string> ports_ = {"8081", "8082", "8083"};
+    std::vector<std::pair<std::string, std::string>> nodes_params_;
     size_t num_of_nodes_ = 2;
 };
 
