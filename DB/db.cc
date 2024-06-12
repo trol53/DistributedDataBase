@@ -9,6 +9,8 @@
 #include <iostream>
 #include <sstream>
 #include <string>
+#include <filesystem>
+#include <fstream>
 
 namespace net = boost::asio;
 using tcp = net::ip::tcp;
@@ -26,6 +28,7 @@ class session : public std::enable_shared_from_this<session> {
   // beast::flat_buffer buffer_;
   boost::asio::streambuf buffer_;
   std::string data_;
+  const std::string storage_path = "/opt/storage/";
 
   std::vector<char> str_to_vec(const std::string& str){
       std::vector<char> res(str.size());
@@ -55,7 +58,7 @@ class session : public std::enable_shared_from_this<session> {
             std::string data(boost::asio::buffers_begin(buffer_.data()),
                  boost::asio::buffers_end(buffer_.data()));
 
-// Очистка буфера
+// Очистка буфера/home/trol53/pets/DistributedDataBase/client/build/test
             buffer_.consume(buffer_.size());
             data_ = data;
             data_.pop_back();
@@ -100,20 +103,24 @@ class session : public std::enable_shared_from_this<session> {
 
   void handle_get(const std::string& hash) {
     
-    auto it = db.find(hash);
-    if (it == db.end()){
+    std::filesystem::path p(storage_path + hash);
+    if (!std::filesystem::exists(p)){
       boost::asio::write(this->socket_, boost::asio::buffer(str_to_vec("dont exist")));
       return;
     }
-
-    boost::asio::write(this->socket_, boost::asio::buffer(str_to_vec(it->second)));
-    
+    std::ifstream file(p);
+    std::stringstream buffer;
+    buffer << file.rdbuf();
+    boost::asio::write(this->socket_, boost::asio::buffer(str_to_vec(buffer.str())));
 
   }
 
-  void handle_post(const std::string& hash, const std::string& file) {
-    db[hash] = file;
-    std::cout << "set block: " << db[hash] << std::endl;
+  void handle_post(const std::string& hash, const std::string& content) {
+    
+    std::filesystem::path p(storage_path + hash);
+    std::ofstream file(p);
+    file << content;
+    std::cout << "set block: " << content << std::endl;
   }
 
 };

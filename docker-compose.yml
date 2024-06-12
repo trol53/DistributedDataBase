@@ -5,19 +5,7 @@ networks:
     external: true
 
 services:
-  # server:
-  #   container_name: server 
-  #   build:
-  #     context: ./router
-  #     dockerfile: Dockerfile
-  #   ports:
-  #     - "1444:1444"
-  #   image: router
-  #   networks:
-  #     app_network:
-  #       ipv4_address: 172.16.1.4
     
-
   db_node_1:
     container_name: db_node_1
     build:
@@ -25,9 +13,8 @@ services:
       dockerfile: Dockerfile
     ports:
       - "9081:8080"
-    # networks:
-      # app_network:
-        # ipv4_address: 172.16.1.6
+    volumes:
+      - /opt/storage/node1:/opt/storage/
 
   db_node_2:
     container_name: db_node_2
@@ -36,9 +23,8 @@ services:
       dockerfile: Dockerfile
     ports:
       - "9082:8080"
-    # networks:
-    #   app_network:
-    #     ipv4_address: 172.16.1.7
+    volumes:
+      - /opt/storage/node2:/opt/storage/
 
   db_node_3:
     container_name: db_node_3
@@ -47,7 +33,6 @@ services:
       dockerfile: Dockerfile
     ports:
       - "9083:8080"
-    # networks:
-      # app_network:
-        # ipv4_address: 172.16.1.8
+    volumes:
+      - /opt/storage/node3:/opt/storage/
 
