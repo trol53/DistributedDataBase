@@ -11,6 +11,7 @@
 #include <string>
 #include <filesystem>
 #include <fstream>
+#include <thread>
 
 namespace net = boost::asio;
 using tcp = net::ip::tcp;
@@ -25,49 +26,37 @@ class session : public std::enable_shared_from_this<session> {
 
  private:
   tcp::socket socket_;
-  // beast::flat_buffer buffer_;
   boost::asio::streambuf buffer_;
+  std::array<char, 512> const_buffer_;
   std::string data_;
   const std::string storage_path = "/opt/storage/";
+  size_t all_read_bytes = 0;
+  size_t file_size;
 
   std::vector<char> str_to_vec(const std::string& str){
       std::vector<char> res(str.size());
       for (size_t i = 0; i < str.size(); i++){
           res[i] = str[i];
       }
-      res.push_back('\0');
       return res;
   }
-  void print_map(){
-    if(!db.empty()){
-      for (auto it : db){
-        std::cout << it.first << " " << it.second << std::endl;
-      }
-    }
-  }
+  
 
   void read_request() {
     std::cout << "reading request\n";
     std::cout.flush();
     auto self = shared_from_this();
-    print_map();
 
-    boost::asio::async_read_until(socket_, buffer_, '\0',
+    boost::asio::async_read_until(socket_, buffer_, '\n',
         [this, self](boost::system::error_code ec, std::size_t) {
           if (!ec) {
             std::string data(boost::asio::buffers_begin(buffer_.data()),
                  boost::asio::buffers_end(buffer_.data()));
-
-// Очистка буфера/home/trol53/pets/DistributedDataBase/client/build/test
             buffer_.consume(buffer_.size());
-            data_ = data;
-            data_.pop_back();
-            std::cout << "get data: " << data << std::endl;
-            std::cout.flush();
+            data_ = std::move(data);
             process_request();
           } else {
             std::cout << "read error: " << ec.message() << std::endl;
-            std::cout.flush();
           }
         });
 
@@ -75,52 +64,70 @@ class session : public std::enable_shared_from_this<session> {
   }
 
   void process_request() {
-    std::stringstream ss1(this->data_), ss2;
-    std::string command, hash, file;
+    std::stringstream ss1(this->data_);
+    std::string command, hash;
     ss1 >> command >> hash;
 
     if (command == "get"){
-      std::cout << "get request: " << command << " " << hash;
-      std::cout << "hash size: " << hash.size() << std::endl;
-      std::cout.flush();
+      std::cout << "request: " << command << " " << hash << std::endl;
       handle_get(hash);
     
     }else if (command == "set") {
-      ss2 << ss1.rdbuf();
-      file = ss2.str();
-      file = std::string(file.begin() + 1, file.end()); 
-      std::cout << "set request: " << command << " " << hash << " " << file;
-      std::cout << "hash size: " << hash.size() << std::endl;
-      std::cout.flush();
-      handle_post(hash, file);
+      ss1 >> file_size;
+      std::cout << "request: " << command << " " << hash << " " << file_size << std::endl;
+      handle_post(hash);
     } else{
-
-      std::cout << "bad request\n";
-      std::cout.flush();
+      std::cout << "bad request" << std::endl;
     }
     
   }
 
   void handle_get(const std::string& hash) {
-    
+    boost::system::error_code ec;
     std::filesystem::path p(storage_path + hash);
     if (!std::filesystem::exists(p)){
       boost::asio::write(this->socket_, boost::asio::buffer(str_to_vec("dont exist")));
       return;
     }
-    std::ifstream file(p);
-    std::stringstream buffer;
-    buffer << file.rdbuf();
-    boost::asio::write(this->socket_, boost::asio::buffer(str_to_vec(buffer.str())));
+    std::ifstream file(p, std::ios::binary);
+    std::string header{std::to_string(std::filesystem::file_size(p)) + '\n'};
+    size_t bytes = boost::asio::write(socket_ ,boost::asio::buffer(str_to_vec(header), header.size()), ec);
+    std::this_thread::sleep_for(std::chrono::milliseconds(1000));
+    while(true){
+      if (file.eof()){
+        std::cout << "send file to server" << std::endl;
+        break;
+      }
+      file.read(const_buffer_.data(), const_buffer_.size());
+      size_t read_len = file.gcount();
+      size_t bytes = boost::asio::write(socket_, boost::asio::buffer(const_buffer_.data(), read_len), ec);
+    }
+    
 
   }
 
-  void handle_post(const std::string& hash, const std::string& content) {
+  void handle_post(const std::string& hash) {
     
-    std::filesystem::path p(storage_path + hash);
-    std::ofstream file(p);
-    file << content;
-    std::cout << "set block: " << content << std::endl;
+    std::ofstream file(storage_path + hash, std::ios::binary);
+    std::cout << "begin of reading block" << std::endl;
+    while(true){
+      boost::system::error_code ec;
+      size_t bytes = socket_.read_some(boost::asio::buffer(const_buffer_.data(), const_buffer_.size()), ec);
+      if (!ec){
+          std::cout << "read bytes: " << bytes << " all read bytes:" << all_read_bytes << std::endl;
+          file.write(const_buffer_.data(), bytes);
+          all_read_bytes += bytes;
+          if (all_read_bytes >= file_size){
+              file.flush();
+              boost::asio::write(socket_, boost::asio::buffer(str_to_vec("200\n")), ec);
+              std::cout << "read file from server" << std::endl;
+              break;
+          }
+      } else {
+          std::cout << "receive file error: " << ec << std::endl;
+          break;
+      }
+    }
   }
 
 };
@@ -147,8 +154,7 @@ private:
 };
 
 int main() {
-  std::cout << "start db\n";
-  std::cout.flush();
+  std::cout << "start db" << std::endl;
   try
     {
 

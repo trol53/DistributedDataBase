@@ -14,6 +14,7 @@
 using boost::asio::ip::tcp;
 using namespace std::string_view_literals;
 auto config = toml::parse_file("/home/trol53/pets/DistributedDataBase/server/config.toml");
+boost::asio::io_context io_context;
 
 class session
   : public std::enable_shared_from_this<session>{
@@ -27,58 +28,94 @@ public:
 
   void do_read(std::vector<std::pair<std::string, std::string>>& nodes_params){
     auto self(shared_from_this());
-    boost::asio::async_read_until(socket_, buffer_, '\0',
+    boost::asio::async_read_until(socket_, buffer_, '\n',
         [this, self, &nodes_params](boost::system::error_code ec, std::size_t) {
           if (!ec) {
             std::string data(boost::asio::buffers_begin(buffer_.data()),
                  boost::asio::buffers_end(buffer_.data()));
 
-// Очистка буфера
             buffer_.consume(buffer_.size());
-            data_ = data;
+            data_ = std::move(data);
             data_.pop_back();
             handler(nodes_params);
-            
-            
-            
           }
         });
   }
 
+
+  void get_file(const std::string& file_name){
+    std::ofstream ofile(file_name, std::ios::binary);
+    while(true){
+      boost::system::error_code ec;
+      size_t bytes = socket_.read_some(boost::asio::buffer(const_buffer_.data(), const_buffer_.size()), ec);
+      if (!ec){
+          ofile.write(const_buffer_.data(), bytes);
+          all_read_bytes += bytes;
+          if (all_read_bytes >= file_len){
+              ofile.flush();
+              std::cout << "read bytes from client: " << all_read_bytes << "\n";
+              break;
+          }
+      } else {
+          std::cout << "receive file error: " << ec;
+          break;
+      }
+    }
+    
+  }
+
+  std::vector<char> str_to_vec(std::string& str){
+    std::vector<char> res(str.size());
+    for (size_t i = 0; i < str.size(); i++){
+        res[i] = str[i];
+    }
+    return res;
+  }
+
+  void set_file(const std::string& file_name){
+    boost::system::error_code ec;
+    std::ifstream ifile(file_name, std::ios::binary);
+    std::string header{std::to_string(std::filesystem::file_size(file_name)) + '\n'};
+    size_t bytes = boost::asio::write(socket_ ,boost::asio::buffer(str_to_vec(header), header.size()), ec);
+    while(true){
+      if (ifile.eof()){
+        std::cout << "send file to client\n";
+        break;
+      }
+      ifile.read(const_buffer_.data(), const_buffer_.size());
+      size_t read_len = ifile.gcount();
+      size_t bytes = boost::asio::write(socket_, boost::asio::buffer(const_buffer_.data(), read_len), ec);
+    }
+    std::remove(file_name.c_str());
+  }
+
   void handler(std::vector<std::pair<std::string, std::string>>& nodes_params)
   {
-    // auto self(shared_from_this());
     std::vector<std::string> mess = split(data_);
     DbInterface db(nodes_params);
+    ParityCode pc;
     if (mess[0] == "get"){
-      ParityCode pc(mess[1]);
-      std::string hash = pc.get_hash();
-      std::pair<int, std::vector<std::string>> file_blocks = db.GetFile(hash);
-      std::string file;
-      if (file_blocks.first == -1){
-        file = pc.get_file_by_blocks(file_blocks.second);
-        std::cout << "file blocks size: " << file_blocks.second[0].size() << " " << file_blocks.second[1].size() << std::endl; 
+      std::string hash = pc.get_hash(mess[1]);
+      int ret = db.GetFile(hash);
+      if (ret == 0){
+        pc.get_file_by_blocks(hash, num_of_nodes); 
       } else {
-        std::string parity = file_blocks.second.back();
-        file_blocks.second.pop_back();
         try{
-          file = pc.get_file_by_parity(file_blocks.second, parity, file_blocks.first);
+          pc.get_file_by_parity(hash, num_of_nodes, ret);
         } catch(std::exception& e){
           std::cout << "get file error: " << e.what() << std::endl;
         }
       }
-      socket_.write_some(boost::asio::buffer(db.str_to_vec(file)));
-      // std::cout << "get" << mess[1];
+      set_file(hash);
     }else{
       std::cout << "set " << mess[1] << " " << mess[2] << std::endl;
-      ParityCode pc(mess[1], mess[2], 2);
-      std::string hash = pc.get_hash();
-      std::vector<std::string> blocks = pc.get_blocks();
-      std::string parity = pc.get_parity();
-      blocks.push_back(parity);
+      std::string hash = pc.get_hash(mess[1]);
+      get_file(hash);
+      pc.get_blocks(hash, num_of_nodes, file_len);
+      pc.get_parity(hash, num_of_nodes);
       std::cout.flush();
       try {
-        db.SetFile(hash, blocks);
+        db.SetFile(hash, io_context);
       } catch(std::exception& e){
         std::cout << "Server Error " << e.what();
       }
@@ -88,14 +125,12 @@ public:
 
   std::vector<std::string> split(std::string& str){
     std::vector<std::string> result(3);
-    std::stringstream ss1 (str), ss2;
+    std::stringstream ss1 (str);
 
     ss1 >> result[0];
     ss1 >> result[1];
     if (result[0] == "set"){
-      ss2 << ss1.rdbuf();
-      result[2] = ss2.str();
-      result[2] = std::string(result[2].begin() + 1, result[2].end());
+      ss1 >> file_len;
     }
     
     return result;
@@ -105,6 +140,9 @@ public:
 
   tcp::socket socket_;
   std::string data_;
+  std::array<char, 512> const_buffer_;
+  size_t file_len;
+  size_t all_read_bytes = 0;
   boost::asio::streambuf buffer_;
   int num_of_nodes = 2;
 };
@@ -152,7 +190,7 @@ int main(int argc, char* argv[])
   try
   {
 
-    boost::asio::io_context io_context;
+    // boost::asio::io_context io_context;
 
     server s(io_context, std::atoi("1444"));
 
