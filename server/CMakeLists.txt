@@ -12,11 +12,12 @@ file(GLOB_RECURSE SERVER_HEADERS ${PROJECT_SOURCE_DIR}/include/*.hxx)
 file(GLOB_RECURSE SERVER_SOURCES ${PROJECT_SOURCE_DIR}/*.cxx)
 
 find_package(Boost 1.74.0 COMPONENTS date_time system)
+find_package(spdlog REQUIRED)
 
 if (Boost_FOUND)
     include_directories(${Boost_LIBRARIES})
     add_executable(${PROJECT_NAME} ${SERVER_HEADERS} ${SERVER_SOURCES} server.cc)
-    target_link_libraries(${PROJECT_NAME} ${Boost_LIBRARIES})
+    target_link_libraries(${PROJECT_NAME} ${Boost_LIBRARIES} spdlog::spdlog)
 else()
     message(FATAL_ERROR "boost not found.")
 endif()

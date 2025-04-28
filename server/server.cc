@@ -6,6 +6,9 @@
 #include <memory>
 #include <utility>
 #include <boost/asio/streambuf.hpp>
+#include <spdlog/spdlog.h>
+#include <spdlog/sinks/syslog_sink.h>
+
 
 #include "lib/ParityCode.hpp"
 #include "lib/toml.hpp"
@@ -15,6 +18,7 @@ using boost::asio::ip::tcp;
 using namespace std::string_view_literals;
 auto config = toml::parse_file("/home/trol53/pets/DistributedDataBase/server/config.toml");
 boost::asio::io_context io_context;
+auto logger = spdlog::syslog_logger_mt("syslog", "server_ddb");
 
 class session
   : public std::enable_shared_from_this<session>{
@@ -53,11 +57,13 @@ public:
           all_read_bytes += bytes;
           if (all_read_bytes >= file_len){
               ofile.flush();
-              std::cout << "read bytes from client: " << all_read_bytes << "\n";
+              spdlog::info("read bytes from client: {0:d}", all_read_bytes);
+              logger->info("read bytes from client: {0:d}", all_read_bytes);
               break;
           }
       } else {
-          std::cout << "receive file error: " << ec;
+          spdlog::error("receive file error: {0}", ec.category().name());
+          logger->error("receive file error: {0}", ec.category().name());
           break;
       }
     }
@@ -79,7 +85,8 @@ public:
     size_t bytes = boost::asio::write(socket_ ,boost::asio::buffer(str_to_vec(header), header.size()), ec);
     while(true){
       if (ifile.eof()){
-        std::cout << "send file to client\n";
+        spdlog::info("send file to client success");
+        logger->info("send file to client success");
         break;
       }
       ifile.read(const_buffer_.data(), const_buffer_.size());
@@ -92,7 +99,7 @@ public:
   void handler(std::vector<std::pair<std::string, std::string>>& nodes_params)
   {
     std::vector<std::string> mess = split(data_);
-    DbInterface db(nodes_params);
+    DbInterface db(nodes_params, logger);
     ParityCode pc;
     if (mess[0] == "get"){
       std::string hash = pc.get_hash(mess[1]);
@@ -100,27 +107,21 @@ public:
       if (ret == 0){
         pc.get_file_by_blocks(hash, num_of_nodes); 
       } else {
-        try{
-          pc.get_file_by_parity(hash, num_of_nodes, ret);
-        } catch(std::exception& e){
-          std::cout << "get file error: " << e.what() << std::endl;
-        }
+        pc.get_file_by_parity(hash, num_of_nodes, ret);
       }
       set_file(hash);
     }else{
-      std::cout << "set " << mess[1] << " " << mess[2] << std::endl;
       std::string hash = pc.get_hash(mess[1]);
       get_file(hash);
       pc.get_blocks(hash, num_of_nodes, file_len);
       pc.get_parity(hash, num_of_nodes);
-      std::cout.flush();
       try {
         db.SetFile(hash, io_context);
       } catch(std::exception& e){
-        std::cout << "Server Error " << e.what();
+        spdlog::error("Send file to db error {0}", e.what());
+        logger->error("Send file to db error {0}", e.what());
       }
     }
-    std::cout.flush();
   }
 
   std::vector<std::string> split(std::string& str){
@@ -165,7 +166,8 @@ private:
       auto tmp = config["node" + std::to_string(i)];
       node_params.first = tmp["address"].value_or(""sv);
       node_params.second = tmp["port"].value_or(""sv);
-      std::cout << "node" << i << ": " << node_params.first << ":" << node_params.second << std::endl;
+      spdlog::info("node{0:d}: {1}:{2}", i, node_params.first.c_str(), node_params.second.c_str());
+      logger->info("node{0:d}: {1}:{2}", i, node_params.first.c_str(), node_params.second.c_str());
       nodes_params.push_back(node_params);
     }
   }
@@ -185,8 +187,8 @@ private:
   tcp::acceptor acceptor_;
 };
 
-int main(int argc, char* argv[])
-{
+int main(int argc, char* argv[]){
+  spdlog::set_pattern("[%Y-%m-%d %H:%M:%S.%e] [%l]  %v");
   try
   {
 

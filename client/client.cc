@@ -5,8 +5,11 @@
 #include <filesystem>
 #include <thread>
 #include <boost/asio.hpp>
+#include <spdlog/spdlog.h>
+#include <spdlog/sinks/syslog_sink.h>
 
 using boost::asio::ip::tcp;
+auto logger = spdlog::syslog_logger_mt("syslog", "client_ddb");
 
 class client {
 
@@ -33,20 +36,20 @@ public:
 
     void send_file(){
         if (ifile.eof()){
-            std::cout << "file eof" << std::endl;
-            std::cout << "send byte: " << all_read_bytes << std::endl;
+            spdlog::info("send success, bytes: {0:d}", all_read_bytes);
+            logger->info("send success, bytes: {0:d}", all_read_bytes);
             return;
         }
         ifile.read(buffer.data(), buffer.size());
         size_t len = ifile.gcount();
-        std::cout.flush();
         boost::asio::async_write(glb_socket, boost::asio::buffer(buffer.data(), len), 
             [this](const boost::system::error_code& error, size_t byte){
                 if (!error){
                     all_read_bytes += byte;
                     send_file();
                 } else {
-                    std::cout << "write error: " << error << std::endl; 
+                    spdlog::error("send file error: {0}", error.category().name());
+                    logger->error("send file error: {0}", error.category().name()); 
                 }
         });
     }
@@ -55,17 +58,14 @@ public:
         file_len = std::filesystem::file_size(filename);
         std::string header{"set " + filename + " " + std::to_string(file_len) + '\n'};
         ifile.open(filename, std::ios::binary);
-        std::cout << "send header start" << std::endl;
-        std::cout.flush();
         boost::asio::async_write(glb_socket, boost::asio::buffer(str_to_vec(header)), 
         [this](const boost::system::error_code& error, size_t bytes)  {
-            std::cout << "handler called" << std::endl;
             if (!error){
-                std::cout << "sent header" << std::endl;
                 std::this_thread::sleep_for(std::chrono::milliseconds(1000));
                 send_file();
             } else{
-                std::cout << "write header: " << error << std::endl;
+                spdlog::error("error write header: {0}", error.category().name());
+                logger->error("error write header: {0}", error.category().name());
 
             } 
         });
@@ -76,15 +76,17 @@ public:
             boost::system::error_code ec;
             size_t bytes = glb_socket.read_some(boost::asio::buffer(buffer.data(), buffer.size()), ec);
             if (!ec){
-                std::cout << "read bytes: " << bytes << std::endl;
                 ofile.write(buffer.data(), bytes);
                 all_read_bytes += bytes;
                 if (all_read_bytes >= file_len){
                     ofile.flush();
+                    spdlog::info("succesfully receive");
+                    logger->info("succesfully receive");
                     break;
                 }
             } else {
-                std::cout << "receive file error: " << ec;
+                spdlog::error("receive file error: {0}", ec.category().name());
+                logger->error("receive file error: {0}", ec.category().name());
                 break;
             }
         }
@@ -99,14 +101,13 @@ public:
         std::string len(boost::asio::buffers_begin(boost_buffer.data()),
                  boost::asio::buffers_end(boost_buffer.data()));
         file_len = std::atoll(len.c_str());
-        std::cout << "file len: " << file_len << std::endl; 
         receive_b();
     }
 
 };
 
 int main(){
-
+    spdlog::set_pattern("[%Y-%m-%d %H:%M:%S.%e] [%l]  %v");
     boost::asio::io_context io_context;
     tcp::resolver resolver(io_context);
     tcp::resolver::query query(tcp::v4(), "127.0.0.1", "1444");
@@ -137,7 +138,8 @@ int main(){
         std::getline(std::cin, filename);
         cl.receive_file(filename);
     } else {
-        std::cout << "unknown error\n";
+        spdlog::error("unknown command");
+        logger->error("unknown command");
     }
     io_context.run();
 }

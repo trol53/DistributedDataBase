@@ -8,32 +8,34 @@
 #include <sstream>
 #include <thread>
 #include <filesystem>
+#include <spdlog/spdlog.h>
+#include <spdlog/sinks/syslog_sink.h>
 
 using boost::asio::ip::tcp;
+
+
+
 class DbInterface{
 public:
 
     DbInterface() = default;
-    DbInterface(std::vector<std::pair<std::string, std::string>>& nodes_params) : 
-    nodes_params_(nodes_params){
+    DbInterface(std::vector<std::pair<std::string, std::string>>& nodes_params, std::shared_ptr<spdlog::logger> logger) : 
+    nodes_params_(nodes_params), logger_(logger){
         num_of_nodes_ = nodes_params_.size();
+        spdlog::set_pattern("[%Y-%m-%d %H:%M:%S.%e] [%l]  %v");
     };
 
     int GetFile(std::string& hash){
         int error_check = -1;
-        try{
-            for (int i = 0; i < num_of_nodes_ - 1; i++){
-                int ret = GetBlock(hash, i);
-                if (ret == 500){
-                    error_check = i;
-                }
+        for (int i = 0; i < num_of_nodes_ - 1; i++){
+            int ret = GetBlock(hash, i);
+            if (ret == 500){
+                error_check = i;
             }
-            if (error_check != -1){
-                int ret = GetBlock(hash, num_of_nodes_ - 1);
-                return error_check + 1;
-            }
-        } catch (std::exception& e){
-            std::cout << e.what() << '\n';
+        }
+        if (error_check != -1){
+            int ret = GetBlock(hash, num_of_nodes_ - 1);
+            return error_check + 1;
         }
         return 0;
         
@@ -82,11 +84,13 @@ public:
                     all_read_bytes += bytes;
                     if (all_read_bytes >= file_len){
                         ofile.flush();
-                        std::cout << "get block " << num + 1 << " from db\n";
+                        spdlog::info("get block {0:d} from db", num + 1);
+                        logger_->info("get block {0:d} from db", num + 1);
                         break;
                     }
                 } else {
-                    std::cout << "receive file error: " << ec << '\n';
+                    spdlog::error("receive block {0:d} with error: {1}", num + 1, ec.message().c_str());
+                    logger_->error("receive block {0:d} with error: {1}", num + 1, ec.message().c_str()); 
                     return 500;
                 }
             }
@@ -94,7 +98,8 @@ public:
             
 
         } catch (std::exception& e) {
-            std::cout << "get block error: " << e.what();
+            spdlog::error("receive block {0:d} error:{1}", num + 1, e.what());
+            logger_->error("receive block {0:d} error:{1}", num + 1, e.what());
             return 500;
         }
         return 200;
@@ -130,12 +135,12 @@ public:
             size_t file_len = std::filesystem::file_size(file_name);
             size_t all_send_bytes = 0;
             std::string header = std::string("set ") + hash + " " + std::to_string(file_len) + '\n';
-            std::cout << "sent header: " << header;
             std::vector<char> buffer = str_to_vec(header);
             boost::asio::write(socket, boost::asio::buffer(buffer, buffer.size()), boost::asio::transfer_all(), ec);
             std::this_thread::sleep_for(std::chrono::milliseconds(1000));
             if (ec){
-                std::cout << "error to send header to db: " << ec << std::endl;
+                spdlog::error("error to send header to db: {0}", ec.message());
+                logger_->error("error to send header to db: {0}", ec.message());
             }
             std::array<char, 512> const_buffer;
             
@@ -148,23 +153,24 @@ public:
                 size_t read_len = ifile.gcount();
                 size_t bytes = boost::asio::write(socket, boost::asio::buffer(const_buffer, read_len), boost::asio::transfer_all(), ec);
                 if (ec){
-                    std::cout << "write to db error: " << ec.value() << std::endl;
-                }
-                if (bytes != 100){
-                    std::cout << "maybe last send: " << bytes << std::endl;
+                    spdlog::error("write to db error:{0}", ec.message());
+                    logger_->error("write to db error:{0}", ec.message());
                 }
                 
             }
-            std::cout << "send block success" << std::endl;
+            spdlog::info("send block {0:d} success", index + 1);
+            logger_->info("send block {0:d} success", index + 1);
             std::remove(file_name.c_str());
 
         } catch (std::exception& e) {
-            std::cout << "DB Error " << e.what() << std::endl;
+            spdlog::error("Node {0:d} error:{1}", index + 1, e.what());
+            logger_->error("Node {0:d} error:{1}", index + 1, e.what());
         }
     }
 
     
     std::vector<std::pair<std::string, std::string>> nodes_params_;
+    std::shared_ptr<spdlog::logger> logger_;
     size_t num_of_nodes_ = 2;
 };
 
