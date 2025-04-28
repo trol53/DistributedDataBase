@@ -1,0 +1,3 @@
+/home/trol53/pets/DistributedDataBase/server/build/CMakeFiles/server.dir
+/home/trol53/pets/DistributedDataBase/server/build/CMakeFiles/edit_cache.dir
+/home/trol53/pets/DistributedDataBase/server/build/CMakeFiles/rebuild_cache.dir
